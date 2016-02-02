@@ -63,6 +63,7 @@ node_log_base = $(call node_tmpdir,$(1))/log
 node_mnesia_base = $(call node_tmpdir,$(1))/mnesia
 node_plugins_expand_dir = $(call node_tmpdir,$(1))/plugins
 node_enabled_plugins_file = $(call node_tmpdir,$(1))/enabled_plugins
+node_generated_config_dir = $(call node_tmpdir,$(1))/config
 
 # Broker startup variables for the test environment.
 RABBITMQ_NODENAME ?= rabbit
@@ -73,6 +74,7 @@ RABBITMQ_LOG_BASE ?= $(call node_log_base,$(RABBITMQ_NODENAME))
 RABBITMQ_MNESIA_BASE ?= $(call node_mnesia_base,$(RABBITMQ_NODENAME))
 RABBITMQ_PLUGINS_EXPAND_DIR ?= $(call node_plugins_expand_dir,$(RABBITMQ_NODENAME))
 RABBITMQ_ENABLED_PLUGINS_FILE ?= $(call node_enabled_plugins_file,$(RABBITMQ_NODENAME))
+RABBITMQ_GENERATED_CONFIG_DIR ?= $(call node_generated_config_dir,$(RABBITMQ_NODENAME))
 
 # erlang.mk adds dependencies' ebin directory to ERL_LIBS. This is
 # a sane default, but we prefer to rely on the .ez archives in the
@@ -91,7 +93,8 @@ RABBITMQ_LOG_BASE="$(call node_log_base,$(1))" \
 RABBITMQ_MNESIA_BASE="$(call node_mnesia_base,$(1))" \
 RABBITMQ_PLUGINS_DIR="$(CURDIR)/$(DIST_DIR)" \
 RABBITMQ_PLUGINS_EXPAND_DIR="$(call node_plugins_expand_dir,$(1))" \
-RABBITMQ_SERVER_START_ARGS="$(RABBITMQ_SERVER_START_ARGS)"
+RABBITMQ_SERVER_START_ARGS="$(RABBITMQ_SERVER_START_ARGS)" \
+RABBITMQ_GENERATED_CONFIG_DIR="$(call node_generated_config_dir,$(1))"
 endef
 
 BASIC_SCRIPT_ENV_SETTINGS = $(call basic_script_env_settings,$(RABBITMQ_NODENAME),$(RABBITMQ_NODE_PORT)) \
