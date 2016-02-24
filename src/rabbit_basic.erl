@@ -20,8 +20,8 @@
 
 -export([publish/4, publish/5, publish/1,
          message/3, message/4, properties/1, prepend_table_header/3,
-         extract_headers/1, extract_timestamp/1, map_headers/2, delivery/4,
-         header_routes/1, parse_expiration/1, header/2, header/3]).
+         extract_headers/1, extract_timestamp/1, map_headers/2, delivery/4, 
+         delivery/5, header_routes/1, parse_expiration/1, header/2, header/3]).
 -export([build_content/2, from_content/1, msg_size/1, maybe_gc_large_msg/1]).
 
 %%----------------------------------------------------------------------------
@@ -49,6 +49,10 @@
 -spec(delivery/4 ::
         (boolean(), boolean(), rabbit_types:message(), undefined | integer()) ->
                          rabbit_types:delivery()).
+-spec(delivery/4 ::
+        (boolean(), boolean(), boolean(), 
+         rabbit_types:message(), undefined | integer()) -> 
+            rabbit_types:delivery()).
 -spec(message/4 ::
         (rabbit_exchange:name(), rabbit_router:routing_key(),
          properties_input(), binary()) -> rabbit_types:message()).
@@ -119,8 +123,12 @@ publish(X, Delivery) ->
     {ok, DeliveredQPids}.
 
 delivery(Mandatory, Confirm, Message, MsgSeqNo) ->
-    #delivery{mandatory = Mandatory, confirm = Confirm, sender = self(),
-              message = Message, msg_seq_no = MsgSeqNo, flow = noflow}.
+    delivery(false, Mandatory, Confirm, Message, MsgSeqNo).
+
+delivery(Blocking, Mandatory, Confirm, Message, MsgSeqNo) ->
+    #delivery{blocking = Blocking, mandatory = Mandatory, confirm = Confirm, 
+              sender = self(), message = Message, msg_seq_no = MsgSeqNo, 
+              flow = noflow}.
 
 build_content(Properties, BodyBin) when is_binary(BodyBin) ->
     build_content(Properties, [BodyBin]);

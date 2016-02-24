@@ -144,6 +144,7 @@
   reply_consumer,
   %% flow | noflow, see rabbitmq-server#114
   delivery_flow,
+  blocking_queues,
   interceptor_state
 }).
 
@@ -567,7 +568,27 @@ handle_cast({mandatory_received, MsgSeqNo}, State = #ch{mandatory = Mand}) ->
 handle_cast({confirm, MsgSeqNos, QPid}, State = #ch{unconfirmed = UC}) ->
     {MXs, UC1} = dtree:take(MsgSeqNos, QPid, UC),
     %% NB: don't call noreply/1 since we don't want to send confirms.
-    noreply_coalesce(record_confirms(MXs, State#ch{unconfirmed = UC1})).
+    noreply_coalesce(record_confirms(MXs, State#ch{unconfirmed = UC1}));
+
+handle_cast({block_sender, {QPid, Message}}, 
+            State = #ch{writer_pid = WriterPid,
+                        blocking_queues = BlockingQs}) ->
+    ok = rabbit_writer:send_command(WriterPid, 
+                                    #'connection.blocked'{reason = Message}),
+    noreply(State#ch{blocking_queues = sets:add_element(QPid, BlockingQs)});
+
+handle_cast({unblock_sender, QPid}, State) ->
+    noreply(do_unblock(QPid, State)).
+
+do_unblock(QPid, State = #ch{writer_pid = WriterPid, 
+                             blocking_queues = BlockingQs}) ->
+    BlockingQsLeft = sets:del_element(QPid, BlockingQs),
+    case sets:size(BlockingQsLeft) of
+        0 -> ok = rabbit_writer:send_command(WriterPid, 
+                                             #'connection.unblocked'{});
+        _ -> ok
+    end,
+    State#ch{blocking_queues = BlockingQsLeft}.
 
 handle_info({bump_credit, Msg}, State) ->
     %% A rabbit_amqqueue_process is granting credit to our channel. If
@@ -593,18 +614,19 @@ handle_info({'DOWN', _MRef, process, QPid, Reason}, State) ->
     State1 = handle_publishing_queue_down(QPid, Reason, State),
     State3 = handle_consuming_queue_down(QPid, State1),
     State4 = handle_delivering_queue_down(QPid, State3),
+    State5 = handle_blocking_queue_down(QPid, State4),
     %% A rabbit_amqqueue_process has died. If our channel was being
     %% blocked by this process, and no other process is blocking our
     %% channel, then this channel will be unblocked. This means that
     %% any credit that was deferred will be sent to the rabbit_reader
     %% processs that might be blocked by this particular channel.
     credit_flow:peer_down(QPid),
-    #ch{queue_names = QNames, queue_monitors = QMons} = State4,
+    #ch{queue_names = QNames, queue_monitors = QMons} = State5,
     case dict:find(QPid, QNames) of
         {ok, QName} -> erase_queue_stats(QName);
         error       -> ok
     end,
-    noreply(State4#ch{queue_names    = dict:erase(QPid, QNames),
+    noreply(State5#ch{queue_names    = dict:erase(QPid, QNames),
                       queue_monitors = pmon:erase(QPid, QMons)});
 
 handle_info({'EXIT', _Pid, Reason}, State) ->
@@ -926,7 +948,8 @@ handle_method(#'basic.publish'{immediate = true}, _Content, _State) ->
 handle_method(#'basic.publish'{exchange    = ExchangeNameBin,
                                routing_key = RoutingKey,
                                mandatory   = Mandatory},
-              Content, State = #ch{virtual_host    = VHostPath,
+              Content, State = #ch{capabilities    = Capabilities,
+                                   virtual_host    = VHostPath,
                                    tx              = Tx,
                                    channel         = ChannelNum,
                                    confirm_enabled = ConfirmEnabled,
@@ -955,8 +978,9 @@ handle_method(#'basic.publish'{exchange    = ExchangeNameBin,
         end,
     case rabbit_basic:message(ExchangeName, RoutingKey, DecodedContent) of
         {ok, Message} ->
-            Delivery = rabbit_basic:delivery(
-                         Mandatory, DoConfirm, Message, MsgSeqNo),
+            Blocking = blocking_capability(Capabilities),
+            Delivery = rabbit_basic:delivery(Blocking, Mandatory, DoConfirm, 
+                                             Message, MsgSeqNo),
             QNames = rabbit_exchange:route(Exchange, Delivery),
             rabbit_trace:tap_in(Message, QNames, ConnName, ChannelNum,
                                 Username, TraceState),
@@ -1624,6 +1648,12 @@ queue_down_consumer_action(CTag, CMap) ->
 handle_delivering_queue_down(QPid, State = #ch{delivering_queues = DQ}) ->
     State#ch{delivering_queues = sets:del_element(QPid, DQ)}.
 
+handle_blocking_queue_down(QPid, State = #ch{blocking_queues = BQ}) ->
+    case sets:is_element(QPid, BQ) of
+        true  -> do_unblock(QPid, State);
+        false -> State
+    end.
+
 binding_action(Fun, ExchangeNameBin, DestinationType, DestinationNameBin,
                RoutingKey, Arguments, ReturnMethod, NoWait,
                State = #ch{virtual_host = VHostPath,
@@ -2042,3 +2072,10 @@ erase_queue_stats(QName) ->
 get_vhost(#ch{virtual_host = VHost}) -> VHost.
 
 get_user(#ch{user = User}) -> User.
+
+
+blocking_capability(Capabilities) ->
+    case rabbit_misc:table_lookup(Capabilities, <<"connection.blocked">>) of
+        {_, true} -> true;
+        _         -> false
+    end.

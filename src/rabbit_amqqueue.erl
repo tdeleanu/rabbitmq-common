@@ -505,10 +505,20 @@ declare_args() ->
      {<<"x-max-length">>,              fun check_non_neg_int_arg/2},
      {<<"x-max-length-bytes">>,        fun check_non_neg_int_arg/2},
      {<<"x-max-priority">>,            fun check_non_neg_int_arg/2},
+     {<<"x-max-length-strategy">>,     fun check_max_length_strategy/2},
      {<<"x-queue-mode">>,              fun check_queue_mode/2}].
 
 consume_args() -> [{<<"x-priority">>,              fun check_int_arg/2},
                    {<<"x-cancel-on-ha-failover">>, fun check_bool_arg/2}].
+
+check_max_length_strategy({longstr, Val}, _Args) ->
+    case lists:member(Val, [<<"dead-letter">>, <<"block">>]) of
+        true  -> ok;
+        false -> {error, invalid_max_length_strategy}
+    end;
+check_max_length_strategy({Type,    _}, _Args) ->
+    {error, {unacceptable_type, Type}}.
+
 
 check_int_arg({Type, _}, _) ->
     case lists:member(Type, ?INTEGER_ARG_TYPES) of

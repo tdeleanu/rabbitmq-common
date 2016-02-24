@@ -112,6 +112,7 @@
          sender,     %% The pid of the process that created the delivery
          message,    %% The #basic_message record
          msg_seq_no, %% Msg Sequence Number from the channel publish_seqno field
+         blocking,   %% Whether to block connection if queue is full
          flow}).     %% Should flow control be used for this delivery
 
 -record(amqp_error, {name, explanation = "", method = none}).
