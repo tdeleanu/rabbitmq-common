@@ -572,21 +572,19 @@ handle_cast({confirm, MsgSeqNos, QPid}, State = #ch{unconfirmed = UC}) ->
     noreply_coalesce(record_confirms(MXs, State#ch{unconfirmed = UC1}));
 
 handle_cast({block_sender, {QPid, Message}}, 
-            State = #ch{writer_pid = WriterPid,
+            State = #ch{reader_pid = ReaderPid,
                         blocking_queues = BlockingQs}) ->
-    ok = rabbit_writer:send_command(WriterPid, 
-                                    #'connection.blocked'{reason = Message}),
+    ok = rabbit_reader:block(Message, ReaderPid),
     noreply(State#ch{blocking_queues = sets:add_element(QPid, BlockingQs)});
 
 handle_cast({unblock_sender, QPid}, State) ->
     noreply(do_unblock(QPid, State)).
 
-do_unblock(QPid, State = #ch{writer_pid = WriterPid, 
+do_unblock(QPid, State = #ch{reader_pid = ReaderPid, 
                              blocking_queues = BlockingQs}) ->
     BlockingQsLeft = sets:del_element(QPid, BlockingQs),
     case sets:size(BlockingQsLeft) of
-        0 -> ok = rabbit_writer:send_command(WriterPid, 
-                                             #'connection.unblocked'{});
+        0 -> ok = rabbit_reader:unblock(ReaderPid);
         _ -> ok
     end,
     State#ch{blocking_queues = BlockingQsLeft}.
