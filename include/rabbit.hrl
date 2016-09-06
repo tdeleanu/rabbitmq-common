@@ -203,6 +203,11 @@
 -record(tracked_connection_per_vhost,
     {vhost, connection_count}).
 
+%% used to track user connections
+%% so that limits can be enforced
+-record(tracked_connection_per_user,
+    {username, connection_count}).
+
 %% Used to track detailed information
 %% about connections.
 -record(tracked_connection, {
