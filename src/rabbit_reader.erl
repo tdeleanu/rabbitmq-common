@@ -1128,7 +1128,7 @@ handle_method0(#'connection.open'{virtual_host = VHostPath},
                            sock             = Sock,
                            throttle         = Throttle}) ->
 
-    ok = is_over_connection_limit(VHostPath, User),
+    ok = is_over_vhost_connection_limit(VHostPath, User),
     ok = rabbit_access_control:check_vhost_access(User, VHostPath, Sock),
     NewConnection = Connection#connection{vhost = VHostPath},
     ok = send_on_channel0(Sock, #'connection.open_ok'{}, Protocol),
@@ -1170,8 +1170,8 @@ handle_method0(_Method, #v1{connection_state = S}) ->
     rabbit_misc:protocol_error(
       channel_error, "unexpected method in connection state ~w", [S]).
 
-is_over_connection_limit(VHostPath, User) ->
-    try rabbit_connection_tracking:is_over_connection_limit(VHostPath) of
+is_over_vhost_connection_limit(VHostPath, User) ->
+    try rabbit_connection_tracking:is_over_vhost_connection_limit(VHostPath) of
         false         -> ok;
         {true, Limit} -> rabbit_misc:protocol_error(not_allowed,
                             "access to vhost '~s' refused for user '~s': "
