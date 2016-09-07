@@ -76,6 +76,7 @@ run_teardown_steps(Config, ExtraSteps) ->
     run_steps(Config, ExtraSteps ++ Steps).
 
 run_steps(Config, [Step | Rest]) ->
+    false = true,
     case Step(Config) of
         {skip, _} = Error -> Error;
         Config1           -> run_steps(Config1, Rest)
