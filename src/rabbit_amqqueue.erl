@@ -30,7 +30,7 @@
 -export([force_event_refresh/1, notify_policy_changed/1]).
 -export([consumers/1, consumers_all/1,  consumers_all/3, consumer_info_keys/0]).
 -export([basic_get/4, basic_consume/10, basic_cancel/4, notify_decorators/1]).
--export([notify_sent/2, notify_sent_queue_down/1, resume/2]).
+-export([resume/2]).
 -export([notify_down_all/2, notify_down_all/3, activate_limit_all/2, credit/5]).
 -export([on_node_up/1, on_node_down/1]).
 -export([update/2, store_queue/1, update_decorators/1, policy_changed/2]).
@@ -47,8 +47,6 @@
 
 -define(INTEGER_ARG_TYPES, [byte, short, signedint, long,
                             unsignedbyte, unsignedshort, unsignedint]).
-
--define(MORE_CONSUMER_CREDIT_AFTER, 50).
 
 %%----------------------------------------------------------------------------
 
@@ -172,8 +170,6 @@
 -spec basic_cancel
         (rabbit_types:amqqueue(), pid(), rabbit_types:ctag(), any()) -> 'ok'.
 -spec notify_decorators(rabbit_types:amqqueue()) -> 'ok'.
--spec notify_sent(pid(), pid()) -> 'ok'.
--spec notify_sent_queue_down(pid()) -> 'ok'.
 -spec resume(pid(), pid()) -> 'ok'.
 -spec internal_delete(name()) ->
           rabbit_types:ok_or_error('not_found') |
@@ -771,23 +767,6 @@ basic_cancel(#amqqueue{pid = QPid}, ChPid, ConsumerTag, OkMsg) ->
 
 notify_decorators(#amqqueue{pid = QPid}) ->
     delegate:cast(QPid, notify_decorators).
-
-notify_sent(QPid, ChPid) ->
-    Key = {consumer_credit_to, QPid},
-    put(Key, case get(Key) of
-                 1         -> gen_server2:cast(
-                                QPid, {notify_sent, ChPid,
-                                       ?MORE_CONSUMER_CREDIT_AFTER}),
-                              ?MORE_CONSUMER_CREDIT_AFTER;
-                 undefined -> erlang:monitor(process, QPid),
-                              ?MORE_CONSUMER_CREDIT_AFTER - 1;
-                 C         -> C - 1
-             end),
-    ok.
-
-notify_sent_queue_down(QPid) ->
-    erase({consumer_credit_to, QPid}),
-    ok.
 
 resume(QPid, ChPid) -> delegate:cast(QPid, {resume, ChPid}).
 
