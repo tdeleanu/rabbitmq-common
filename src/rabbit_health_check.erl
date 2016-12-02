@@ -16,41 +16,45 @@
 -module(rabbit_health_check).
 
 %% External API
--export([node/1, node/2]).
+-export([node/1, node/2, health_checks/0]).
 
 %% Internal API
--export([local/0]).
+-export([node_health_check/3, health_check_local/1]).
 
 -spec node(node(), timeout()) -> ok | {badrpc, term()} | {error_string, string()}.
--spec local() -> ok | {error_string, string()}.
+-spec node_health_check(node(), integer(), atom()) -> ok | {badrpc, term()} | {error_string, string()}.
+-spec health_check_local(atom()) -> ok | {error_string, string()}.
 
 %%----------------------------------------------------------------------------
 %% External functions
 %%----------------------------------------------------------------------------
 
 node(Node) ->
-    %% same default as in CLI
-    node(Node, 70000).
+    %% Timeout for each check operation
+    node(Node, 20000).
 node(Node, Timeout) ->
-    rabbit_misc:rpc_call(Node, rabbit_health_check, local, [], Timeout).
+    run_checks(Node, Timeout, health_checks()).
 
-local() ->
-    run_checks([list_channels, list_queues, alarms, rabbit_node_monitor]).
+health_checks() ->
+    [list_channels, list_queues, alarms, rabbit_node_monitor].
+
+node_health_check(Node, Timeout, Check) ->
+    rabbit_misc:rpc_call(Node,
+                         rabbit_health_check, health_check_local, [Check],
+                         Timeout).
 
 %%----------------------------------------------------------------------------
 %% Internal functions
 %%----------------------------------------------------------------------------
-run_checks([]) ->
+run_checks(Node, Timeout, []) ->
     ok;
-run_checks([C|Cs]) ->
-    case node_health_check(C) of
-        ok ->
-            run_checks(Cs);
-        Error ->
-            Error
+run_checks(Node, Timeout, [C|Cs]) ->
+    case node_health_check(Node, Timeout, C) of
+        ok    -> run_checks(Node, Timeout, Cs);
+        Error -> {C, Error}
     end.
 
-node_health_check(list_channels) ->
+health_check_local(list_channels) ->
     case rabbit_channel:info_local([pid]) of
         L when is_list(L) ->
             ok;
@@ -60,10 +64,10 @@ node_health_check(list_channels) ->
             {error_string, ErrorMsg}
     end;
 
-node_health_check(list_queues) ->
+health_check_local(list_queues) ->
     health_check_queues(rabbit_vhost:list());
 
-node_health_check(rabbit_node_monitor) ->
+health_check_local(rabbit_node_monitor) ->
     case rabbit_node_monitor:partitions() of
         L when is_list(L) ->
             ok;
@@ -73,7 +77,7 @@ node_health_check(rabbit_node_monitor) ->
             {error_string, ErrorMsg}
     end;
 
-node_health_check(alarms) ->
+health_check_local(alarms) ->
     case proplists:get_value(alarms, rabbit:status()) of
         [] ->
             ok;
