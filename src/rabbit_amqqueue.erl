@@ -11,7 +11,7 @@
 %% The Original Code is RabbitMQ.
 %%
 %% The Initial Developer of the Original Code is GoPivotal, Inc.
-%% Copyright (c) 2007-2016 Pivotal Software, Inc.  All rights reserved.
+%% Copyright (c) 2007-2017 Pivotal Software, Inc.  All rights reserved.
 %%
 
 -module(rabbit_amqqueue).
@@ -47,8 +47,6 @@
 
 -define(INTEGER_ARG_TYPES, [byte, short, signedint, long,
                             unsignedbyte, unsignedshort, unsignedint]).
-
--define(MORE_CONSUMER_CREDIT_AFTER, 50).
 
 %%----------------------------------------------------------------------------
 
@@ -773,21 +771,10 @@ notify_decorators(#amqqueue{pid = QPid}) ->
     delegate:cast(QPid, notify_decorators).
 
 notify_sent(QPid, ChPid) ->
-    Key = {consumer_credit_to, QPid},
-    put(Key, case get(Key) of
-                 1         -> gen_server2:cast(
-                                QPid, {notify_sent, ChPid,
-                                       ?MORE_CONSUMER_CREDIT_AFTER}),
-                              ?MORE_CONSUMER_CREDIT_AFTER;
-                 undefined -> erlang:monitor(process, QPid),
-                              ?MORE_CONSUMER_CREDIT_AFTER - 1;
-                 C         -> C - 1
-             end),
-    ok.
+    rabbit_amqqueue_common:notify_sent(QPid, ChPid).
 
 notify_sent_queue_down(QPid) ->
-    erase({consumer_credit_to, QPid}),
-    ok.
+    rabbit_amqqueue_common:notify_sent_queue_down(QPid).
 
 resume(QPid, ChPid) -> delegate:cast(QPid, {resume, ChPid}).
 
