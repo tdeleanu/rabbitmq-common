@@ -57,23 +57,22 @@
 %% This function can exit if there is already an entry with the same ID
 -callback insert(msg_location(), index_state()) -> 'ok'.
 
-%% Update an entry in the index.
-%% Is called by a msg_store process only.
-%% The function is called duting message store recovery after crash.
-%% The difference between update and insert functions, is that update
-%% should not fail if entry already exist, and should be atomic.
--callback update(msg_location(), index_state()) -> 'ok'.
-
-%% Update positional fields in the entry tuple.
-%% Is called by msg_store and GC processes concurrently.
-%% This function can exit if there is no entry with specified ID
-%% This function is called to update reference-counters and file locations.
-%% File locations are updated from a GC process, reference-counters are
-%% updated from a message store process.
+%% Update file location on a message store.
+%% This function will be called by a GC process and
+%% by a message store process during recovery from scratch.
 %% This function should be atomic.
--callback update_fields(rabbit_types:msg_id(), ({fieldpos(), fieldvalue()} |
-                                                [{fieldpos(), fieldvalue()}]),
-                        index_state()) -> 'ok'.
+-callback update_file_location(MsgId :: rabbit_types:msg_id(),
+                               File :: string(),
+                               Offset :: integer(),
+                               TotalSize :: integer(),
+                               IndexState :: index_state()) -> 'ok'.
+
+%% Update reference counter for a message.
+%% This function will be called by a message store process.
+%% This function should be atomic.
+-callback update_ref_count(MsgId :: rabbit_types:msg_id(),
+                           NewRefCount :: integer(),
+                           IndexState :: index_state()) -> 'ok'.
 
 %% Delete an entry from the index by ID.
 %% Is called from a msg_store process only.
