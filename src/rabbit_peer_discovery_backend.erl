@@ -39,6 +39,12 @@
                           {ok, {Nodes :: list(), NodeType :: rabbit_types:node_type()}} |
                           {error, Reason :: string()}.
 
+%% Lets the backend indicate that it does or does not
+%% support peer registration and unregistration.
+%% For example, classic config and DNS backend do not
+%% support registration: peer list is managed out-of-band.
+-callback supports_registration() -> boolean().
+
 -callback register()   -> ok | {error, Reason :: string()}.
 
 -callback unregister() -> ok | {error, Reason :: string()}.
