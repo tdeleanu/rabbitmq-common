@@ -60,7 +60,7 @@
 -export([format_message_queue/2]).
 -export([append_rpc_all_nodes/4]).
 -export([os_cmd/1]).
--export([is_os_process_alive/1]).
+-export([is_os_process_alive/1, is_os_process_erlang/1]).
 -export([gb_sets_difference/2]).
 -export([version/0, otp_release/0, which_applications/0]).
 -export([sequence_error/1]).
@@ -79,6 +79,9 @@
 -export([report_default_thread_pool_size/0]).
 -export([get_gc_info/1]).
 -export([group_proplists_by/2]).
+
+%% Exported for testing purposes
+-export([win_tasklist_contains_pid/2]).
 
 %% Horrible macro to use in guards
 -define(IS_BENIGN_EXIT(R),
@@ -233,7 +236,8 @@
 -spec format_message_queue(any(), priority_queue:q()) -> term().
 -spec append_rpc_all_nodes([node()], atom(), atom(), [any()]) -> [any()].
 -spec os_cmd(string()) -> string().
--spec is_os_process_alive(non_neg_integer()) -> boolean().
+-spec is_os_process_alive(string()) -> boolean().
+-spec is_os_process_erlang(string()) -> boolean().
 -spec gb_sets_difference(?GB_SET_TYPE(), ?GB_SET_TYPE()) -> ?GB_SET_TYPE().
 -spec version() -> string().
 -spec otp_release() -> string().
@@ -970,12 +974,32 @@ os_cmd(Command) ->
     end.
 
 is_os_process_alive(Pid) ->
+    with_os([{unix, fun() ->
+                        [] =/= rabbit_misc:os_cmd("ps -o ucomm= " ++ Pid)
+                    end},
+             {win32, fun() ->
+                         Cmd = "tasklist /fo LIST /fi \"pid eq " ++ Pid ++ "\" ",
+                         Res = rabbit_misc:os_cmd(Cmd),
+                         win_tasklist_contains_pid(Res, Pid)
+                     end}]).
+
+win_tasklist_contains_pid(TaskListOutput, Pid) ->
+    MatchRes = re:run(TaskListOutput, "^PID:\s+([0-9]+)",
+                      [multiline, {capture, all_but_first, list}]),
+    case MatchRes of
+        {match, [MatchedPid]} -> MatchedPid == Pid;
+        _                     -> false
+    end.
+
+
+is_os_process_erlang(Pid) ->
     with_os([{unix, fun () ->
-                            run_ps(Pid) =:= 0
+                            Res = rabbit_misc:os_cmd("ps -o ucomm= " ++ Pid),
+                            match == re:run(Res, "^beam", [{capture, none}])
                     end},
              {win32, fun () ->
                              Cmd = "tasklist /nh /fi \"pid eq " ++ Pid ++ "\" ",
-                             Res = os_cmd(Cmd ++ "2>&1"),
+                             Res = rabbit_misc:os_cmd(Cmd ++ "2>&1"),
                              case re:run(Res, "erl\\.exe", [{capture, none}]) of
                                  match -> true;
                                  _     -> false
@@ -987,18 +1011,6 @@ with_os(Handlers) ->
     case proplists:get_value(OsFamily, Handlers) of
         undefined -> throw({unsupported_os, OsFamily});
         Handler   -> Handler()
-    end.
-
-run_ps(Pid) ->
-    Port = erlang:open_port({spawn, "ps -p " ++ Pid},
-                            [exit_status, {line, 16384},
-                             use_stdio, stderr_to_stdout]),
-    exit_loop(Port).
-
-exit_loop(Port) ->
-    receive
-        {Port, {exit_status, Rc}} -> Rc;
-        {Port, _}                 -> exit_loop(Port)
     end.
 
 gb_sets_difference(S1, S2) ->
