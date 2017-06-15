@@ -58,6 +58,8 @@
 
 -export_type([name/0, qmsg/0, absent_reason/0]).
 
+-type vhost_or_all() :: all | rabbit_types:vhost().
+
 -type name() :: rabbit_types:r('queue').
 -type qpids() :: [pid()].
 -type qlen() :: rabbit_types:ok(non_neg_integer()).
@@ -110,26 +112,37 @@
           'ok' | rabbit_types:channel_exit().
 -spec with_exclusive_access_or_die(name(), pid(), qfun(A)) ->
           A | rabbit_types:channel_exit().
+
 -spec list() -> [rabbit_types:amqqueue()].
--spec list(rabbit_types:vhost()) -> [rabbit_types:amqqueue()].
+-spec list(vhost_or_all()) -> [rabbit_types:amqqueue()].
 -spec list_names() -> [rabbit_amqqueue:name()].
--spec list_down(rabbit_types:vhost()) -> [rabbit_types:amqqueue()].
+-spec list_down(vhost_or_all()) -> [rabbit_types:amqqueue()].
 -spec info_keys() -> rabbit_types:info_keys().
+
 -spec info(rabbit_types:amqqueue()) -> rabbit_types:infos().
 -spec info(rabbit_types:amqqueue(), rabbit_types:info_keys()) ->
           rabbit_types:infos().
--spec info_all(rabbit_types:vhost()) -> [rabbit_types:infos()].
--spec info_all(rabbit_types:vhost(), rabbit_types:info_keys()) ->
+-spec info_all(vhost_or_all()) -> [rabbit_types:infos()].
+-spec info_all(vhost_or_all(), rabbit_types:info_keys()) ->
           [rabbit_types:infos()].
--spec force_event_refresh(reference()) -> 'ok'.
--spec notify_policy_changed(rabbit_types:amqqueue()) -> 'ok'.
+
+-spec emit_info_all([node()], vhost_or_all(), [rabbit_types:infos()], reference(), pid()) -> ok.
+-spec emit_info_local(vhost_or_all(), [rabbit_types:infos()], reference(), pid()) -> ok.
+-spec emit_info_down(vhost_or_all(), [rabbit_types:infos()], reference(), pid()) -> ok.
+
 -spec consumers(rabbit_types:amqqueue()) ->
           [{pid(), rabbit_types:ctag(), boolean(), non_neg_integer(),
             rabbit_framing:amqp_table()}].
 -spec consumer_info_keys() -> rabbit_types:info_keys().
--spec consumers_all(rabbit_types:vhost()) ->
+-spec consumers_all(vhost_or_all()) ->
           [{name(), pid(), rabbit_types:ctag(), boolean(),
             non_neg_integer(), rabbit_framing:amqp_table()}].
+
+-spec emit_consumers_all([node()], vhost_or_all(), reference(), pid()) -> ok.
+-spec emit_consumers_local(vhost_or_all(), reference(), pid()) -> ok.
+
+-spec force_event_refresh(reference()) -> 'ok'.
+-spec notify_policy_changed(rabbit_types:amqqueue()) -> 'ok'.
 -spec stat(rabbit_types:amqqueue()) ->
           {'ok', non_neg_integer(), non_neg_integer()}.
 -spec delete_immediately(qpids()) -> 'ok'.
@@ -583,7 +596,7 @@ check_queue_mode({longstr, Val}, _Args) ->
 check_queue_mode({Type,    _}, _Args) ->
     {error, {unacceptable_type, Type}}.
 
-list() -> mnesia:dirty_match_object(rabbit_queue, #amqqueue{_ = '_'}).
+list() -> list(all).
 
 list_names() -> mnesia:dirty_all_keys(rabbit_queue).
 
@@ -591,6 +604,11 @@ list(VHostPath) -> list(VHostPath, rabbit_queue).
 
 %% Not dirty_match_object since that would not be transactional when used in a
 %% tx context
+list(all, TableName) ->
+    mnesia:async_dirty(
+        fun () ->
+            mnesia:match_object(TableName, #amqqueue{_ = '_'}, read)
+        end);
 list(VHostPath, TableName) ->
     mnesia:async_dirty(
       fun () ->
